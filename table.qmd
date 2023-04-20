@@ -1,0 +1,62 @@
+---
+title: "Untitled"
+output: 
+  html:
+    df_print: paged
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: false
+---
+
+```{r, include = F}
+library(tidyverse)
+library(skimr)
+library(knitr)
+library(tidyverse)
+library(lubridate)
+library(socviz)
+library(ggthemes)
+library(hrbrthemes)
+library(gapminder)
+library(stargazer)
+library(broom)
+library(kableExtra)
+
+knitr::opts_chunk$set(fig.width=8, 
+                      fig.height=5,
+                      echo = T, 
+                      eval = T, 
+                      warning = F, message = F)  
+
+theme_set(theme_ipsum() +
+          theme(strip.background =element_rect(fill="lightgray")))
+```
+
+
+
+```{r}
+kable(
+  iris,
+  col.names = c('We', 'Need', 'Five', 'Names', 'Here')
+) 
+```
+
+```{r}
+knitr::kable(iris, align = "lccrr")
+```
+
+
+
+```{r}
+d <- cbind(X1 = runif(3), X2 = 10^c(3, 5, 7), X3 = rnorm(3,
+  0, 1000))
+# at most 4 decimal places
+knitr::kable(d, digits = 4)
+```
+
+
+```{r}
+knitr::kable(d, digits = 3, 
+             format.args = list(scientific = FALSE))
+```

@@ -1,0 +1,28 @@
+project:
+  type: website
+  output-dir: "."
+  
+website:
+  title: "DANL 310"
+  page-footer: "Copyright 2023, Byeong-Hak Choe" 
+  reader-mode: false
+  navbar:
+    pinned: true
+    left:
+      - text: project
+        href: basic-example.qmd
+      - text: lectures
+        menu:
+          - text: DANL310 midterm
+            href: DANL310_midterm-spring-2023-a.qmd
+            
+format:
+  html:
+    theme:
+      light: flatly
+      dark: [darkly, theme-dark-cosmo.scss]
+    # mainfont: Georgia, serif;
+    css: styles.css
+    mainfont: Gill Sans, sans-serif;
+    toc: true
+    include-after-body: target_blank.html
