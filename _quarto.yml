@@ -3,14 +3,14 @@ project:
   output-dir: "."
   
 website:
-  title: "DANL 310"
-  page-footer: "Copyright 2023, Byeong-Hak Choe" 
+  title: "DANL 399"
+  page-footer: "Copyright 2023" 
   reader-mode: false
   navbar:
     pinned: true
     left:
       - text: project
-        href: basic-example.qmd
+        href: capstone_project.qmd
             
 format:
   html:

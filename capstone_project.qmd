@@ -1,0 +1,593 @@
+---
+title: United States Car Accident Project
+author: "Jason Rappazzo, James Jordan"
+output:
+    quarto::html_document:
+      self_contained: false
+    includes:
+      in_header: shiny.html
+runtime: shiny
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+server: shiny
+---
+
+```{r setup, include = F}
+library(tidyverse)
+library(skimr)   # a better summary of data.frame
+library(scales)  # scales for ggplot
+library(ggthemes)  # additional ggplot themes
+theme_set(theme_minimal()) # setting the minimal theme for ggplot
+# setting default chunk options
+knitr::opts_chunk$set(echo = T, eval = T,
+                      message=F, warning = F) 
+```
+
+# Indroduction
+For our capstone project we will be analyzing a Kaggle data set on car accidents in the United States. The data set contains accident reports from February 2016 through December 2021 using various APIs. There are 2.8 million accidents reported in this data set. There are 47 different features making this data set quite large. We will be using a 10% subset of the data for ease of computing. 
+
+
+## Research Questions
+
+What features are strongly associated with the severity of a car accident?
+
+Which model best predicts the severity of a car accident? 
+
+## Overview of Modeling Techniques
+
+<u> Linear Regression:</u> also known as Ordinary Least Squares (OLS) is the most simple method for regression analysis.
+
+The linear regression model for predicting the severity of a car accident is:
+
+$$\hat{y}=\hat{\beta_0} + \hat{\beta_i} \times x + \epsilon$$
+
+where $\hat{y}$ is the predicted severity of a car accident, $\hat{\beta_0}$ is the intercept term, $\hat{\beta_i}$ is the beta estimate for each feature, and $\epsilon$ is the error term.
+
+The model minimizes the mean squared error, which is written as:
+
+$$MSE({\beta})=\frac{1}{n} \sum_{i=1}^n  \hat{\epsilon_i}^2=\frac{1}{n}\sum_{i=1}^n  (y_i-\hat{y_i})^2$$
+
+where $\hat{y_i}$ is the predicted severity of a car accident and $y_i$ is the actual severity.
+
+
+<u> Ridge Regression: </u> A regularized version of linear regression. This is achieved by adding this equation to the loss function:
+
+$$\sum_{i=1}^n  \beta_i^2$$
+
+The cost function for ridge regression is as follows:
+
+$$
+(\beta) = MSE(\beta) + \frac{1}{n} \alpha \sum_{i=1}^n  \beta_i^2
+$$
+
+where $MSE(\beta)$ is the mean squared error function, $\beta_i$ is the coefficient of the $i$-th feature, $n$ is the number of samples, and $\alpha$ is the regularization strength.
+
+<u> Lasso Regression: </u> Like Ridge Regression, Lasso Regression adds a regularization term to the cost function, but uses the l1 norm of the weight vector instead of half the square of the l2 norm. The cost function for Lasso Regression is as follows:
+
+$$J(\beta) = MSE(\beta) +  \alpha \sum_{i=1}^n  |\beta_i|$$
+
+where $MSE(\beta)$ is the mean squared error function, $\beta_i$ is the coefficient of the $i$-th feature, $n$ is the number of samples, and $\alpha$ is the regularization strength.
+
+
+<u> Random Forest: </u> They are comprised of many slightly different decision trees. The decision trees that make up the random forest are generated randomly giving it the name Random Forest. Depending on the number of trees in the forest, this could be a highly accurate model, but could also have the tendency to over fit the data. Random Forests are one way to combat the over fitting problem that Decision Tree Models may have. 
+
+
+# Raw Data
+
+```{r, include=FALSE}
+library(tidyverse)
+path <- "/Users/jamesjordan/Desktop/US_Accidents_Dec21_sample.csv"
+accident_raw <- read_csv(path)
+
+accident_raw <- accident_raw %>% 
+  na.omit()
+
+accident_raw <- accident_raw %>% 
+  group_by(Weather_Condition) %>% 
+  filter(n() >25) %>% 
+  ungroup() %>% 
+  filter( State != 'VT') %>% 
+  filter( State != 'RI') %>% 
+  filter( State != 'WY') 
+  
+
+```
+
+```{r, echo=FALSE}
+
+accident_head<- accident_raw %>% 
+  head() %>% 
+  select( -ID)
+
+library(kableExtra)
+
+accident_head %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  scroll_box(height = "400px")
+```
+## About the Data
+The target variable that we will be using is called “Severity” which indicates the severity of the accident scored on a numeric scale from 1-4. A score of 1 would indicate that the accident was not severe and had a little impact on traffic whereas a 4 would mean the accident had a large impact on traffic and was highly severe. We do not plan on utilizing all of the features provided in the data set. Instead we will only be using 11 in our models. The features include “State”, “Temperature(F)”, “Humidity(%)”, “Visibility(mi)”, “Wind_Speed(mph)”, “Weather_Condition”, “Precipitation(in)”, “Crossing”, “Junction”, “Traffic_Signal”, and “Sunrise_Sunset”. Using these variables in conjunction with supervised machine learning techniques, we will be able to predict the severity of a certain accident.
+
+## Data Description
+
+<u> State:</u> Shows the state in address field.
+
+<u>Temperature(F):</u>  Shows the temperature (in Fahrenheit).
+
+<u>Humidity(%):</u>  Shows the humidity (in percentage).
+
+<u>Visibility(mi):</u> Shows visibility (in miles).
+
+<u>Wind_Speed(mph):</u> Shows wind speed (in miles per hour).
+
+<u>Weather_Condition:</u> Shows the weather condition (rain, snow, thunderstorm, fog, etc.).
+
+<u>Precipitation(in):</u> Shows precipitation amount in inches, if there is any.
+
+<u>Crossing:</u> A POI annotation which indicates presence of crossing in a nearby location.
+
+<u>Junction:</u> A POI annotation which indicates presence of junction in a nearby location.
+
+<u>Traffic_Signal:</u> A POI annotation which indicates presence of traffic_signal in a nearby location
+
+<u>Sunrise_Sunset:</u> Shows the period of day (i.e. day or night) based on sunrise/sunset.
+
+
+## Data Visualization
+```{r, collapse=TRUE, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(accident_raw, aes(x = Severity)) +
+  geom_bar(fill = "darkgreen") +
+  labs(title = "Number of Accidents by Severity", x = "Severity", y = "Count")+ 
+  theme_minimal()
+```
+Most of the car accidents recorded had a severity score of 2 out of the highest posible 4. The data is not balanced.
+
+<br>
+
+
+```{r, collapse=TRUE, warning=FALSE, message=FALSE,fig.height=8, fig.width= 10, echo=FALSE}
+library(dplyr)
+
+accident_freq <- accident_raw %>% 
+  count(State) %>% 
+  arrange(desc(n))
+
+ggplot(accident_freq, aes(x = reorder(State, -n), y = n)) +
+  geom_bar(fill = "darkgreen", stat = "identity") +
+  labs(title = "Number of Accidents by State", x = "State", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  ylab("Count of Accidents")+ xlab("")+
+  theme_minimal()
+```
+The highest amount of car accidents in this particular data set came from Florida and California each with over 20,000 separate accidents.
+
+<br>
+
+
+```{r, collapse=TRUE, warning=FALSE, message=FALSE,fig.height=8, fig.width= 10, echo=FALSE}
+library(tidytext)
+accident_raw %>%
+  group_by(Severity) %>%
+  count(Weather_Condition) %>%
+  mutate(n = n / sum(n)) %>%
+  top_n(10, n) %>%
+  ggplot(aes(reorder_within(Weather_Condition, n, Severity), n)) +
+  geom_col(aes(fill = !Weather_Condition == "Clear"), show.legend = F) +
+  facet_wrap(~ Severity, scales = "free_y") +
+  coord_flip() +
+  scale_x_reordered() +
+  scale_y_continuous(breaks = seq(0, 0.6, 0.05), labels = percent) +
+  labs(x = "Weather Condition",
+       y = "Proportion",
+       title = "Proportion of Top 10 Weather Conditions for Each Severity Level")
+```
+This graph shows that weather condition does not have that much of an impact on severity level. Each of the severity levels showed very high proportions of fair weather. 
+
+<br>
+
+# Preparing Data For Machine Learning
+```{r, collapse=TRUE, warning=FALSE, message=FALSE}
+accident_12var <- accident_raw %>% 
+  select(Severity,State, `Temperature(F)`, `Humidity(%)`,
+         `Visibility(mi)`, `Wind_Speed(mph)`, Weather_Condition,
+         `Precipitation(in)`, Crossing, Junction, Traffic_Signal,
+         Sunrise_Sunset)
+
+colnames(accident_12var) <- gsub("\\)|\\%|\\(", ".", colnames(accident_12var))
+```
+
+```{r, collapse=TRUE, warning=FALSE, message=FALSE}
+library(caret)
+library(recipes)
+library(dplyr)
+
+# Split the data into training and testing sets
+set.seed(2)
+train_indices <- createDataPartition(accident_12var$Severity, p = 0.8, list = FALSE)
+train_set <- accident_12var[train_indices, ]
+test_set <- accident_12var[-train_indices, ]
+
+
+# TRAIN SET
+
+# Make a copy of the train set
+copied_traindata <- data.frame(train_set)
+
+# Add an id column to copied_traindata
+copied_traindata <- copied_traindata %>% mutate(id = row_number())
+
+# Separate Label from Feature
+accident <- select(copied_traindata, -Severity) # drop Severity column
+label <- copied_traindata$Severity # select Severity column
+
+# Separate Numerical from Categorical
+accident_num <- accident %>% 
+  select(id, Temperature.F., Humidity..., Visibility.mi., Wind_Speed.mph., Precipitation.in.)
+
+accident_cat <- accident %>% 
+  select(id, State, Weather_Condition, Crossing, Junction, Traffic_Signal, Sunrise_Sunset)
+
+# Define numeric and categorical attributes
+num_attribs <- names(accident_num)[2:6]
+cat_attribs <- names(accident_cat)[2:7]
+
+# Define preprocessing pipelines
+num_pipeline <- recipe(~., data = accident_num) %>%
+  step_impute_median(all_numeric(), -has_role("id")) %>%
+  step_center(all_numeric(), -has_role("id")) %>%
+  step_scale(all_numeric(), -has_role("id"))
+
+cat_pipeline <- recipe(~., data = accident_cat) %>%
+  step_dummy(all_nominal())
+
+# Merge the preprocessed numerical and categorical features into a single dataset
+
+accident <- accident %>% rename(Index = id) 
+
+df1 <- mutate(num_pipeline %>% prep() %>% bake(new_data = NULL), join_key = "Index")
+df2 <- mutate(cat_pipeline %>% prep() %>% bake(new_data = NULL), join_key = "Index")
+
+accident_prepared <- accident %>% 
+  select(-one_of(c(cat_attribs, num_attribs)))
+
+accident_prepared <- cbind(accident_prepared, df1,df2)
+
+
+
+accident_prepared <- accident_prepared %>% 
+  distinct()
+
+accident_prepared <- select(accident_prepared, -c("Index", "id", "join_key", "id.1", "join_key.1"))
+
+
+
+
+
+
+#TEST SET
+# Make a copy of the test set
+copied_testdata <- data.frame(test_set)
+
+# Add an id column to copied_testdata
+copied_testdata <- copied_testdata %>% mutate(id = row_number())
+
+# Separate Label from Feature
+accident_test <- select(copied_testdata, -Severity) # drop Severity column
+label_test <- copied_testdata$Severity # select Severity column
+
+# Separate Numerical from Categorical
+accident_num_test <- copied_testdata %>% 
+  select(Temperature.F., Humidity..., Visibility.mi., Wind_Speed.mph., Precipitation.in.)
+
+accident_cat_test <- copied_testdata %>% 
+  select(State, Weather_Condition, Crossing, Junction, Traffic_Signal, Sunrise_Sunset)
+
+# Define numeric and categorical attributes
+num_attribs <- names(accident_num_test)[1:6]
+cat_attribs <- names(accident_cat_test)[1:7]
+
+# Define preprocessing pipelines
+num_pipeline <- recipe(~., data = accident_num_test) %>%
+  step_impute_median(all_numeric(), -has_role("id")) %>%
+  step_center(all_numeric(), -has_role("id")) %>%
+  step_scale(all_numeric(), -has_role("id"))
+
+cat_pipeline <- recipe(~., data = accident_cat_test) %>%
+  step_dummy(all_nominal())
+
+# Merge the preprocessed numerical and categorical features into a single dataset
+
+copied_testdata <- copied_testdata %>% rename(Index = id) 
+
+df1 <- mutate(num_pipeline %>% prep() %>% bake(new_data = NULL), join_key = "Index")
+df2 <- mutate(cat_pipeline %>% prep() %>% bake(new_data = NULL), join_key = "Index")
+
+accident_prepared_test <- accident_test %>% 
+  select(-one_of(c(cat_attribs, num_attribs)))
+
+accident_prepared_test <- cbind(accident_prepared_test, df1,df2)
+
+
+
+accident_prepared_test <- accident_prepared_test %>% 
+  distinct()
+
+accident_prepared_test <- select(accident_prepared_test, -c("id", "join_key", "join_key.1"))
+
+```
+
+```{r, include = FALSE, warning=FALSE, echo=FALSE}
+# accident_prepared_test$Weather_Condition_Blowing.Dust...Windy <- 0
+# accident_prepared_test$Weather_Condition_Clear <- 0
+# accident_prepared_test$Weather_Condition_Hail <- 0
+# accident_prepared_test$Weather_Condition_Blowing.Snow...Windy <- 0
+# accident_prepared_test$Weather_Condition_Blowing.Snow <- 0
+# accident_prepared_test$Weather_Condition_Freezing.Drizzle <- 0
+# accident_prepared_test$Weather_Condition_Heavy.Drizzle <- 0
+# accident_prepared_test$Weather_Condition_Heavy.Sleet <- 0
+# accident_prepared_test$Weather_Condition_Heavy.Snow...Windy <- 0
+# accident_prepared_test$Weather_Condition_Light.Freezing.Rain...Windy <- 0
+# accident_prepared_test$Weather_Condition_Light.Ice.Pellets <- 0
+# accident_prepared_test$Weather_Condition_Light.Thunderstorms.and.Rain <- 0
+# accident_prepared_test$Weather_Condition_Sleet <- 0
+# accident_prepared_test$Weather_Condition_Thunder...Wintry.Mix <- 0
+# accident_prepared_test$Weather_Condition_Smoke...Windy <- 0
+# accident_prepared_test$Weather_Condition_Thunder.and.Hail <- 0
+# accident_prepared_test$Weather_Condition_Widespread.Dust <- 0
+# accident_prepared_test$Weather_Condition_Widespread.Dust...Windy <- 0
+# accident_prepared_test$Weather_Condition_Light.Snow.Shower <- 0
+```
+
+
+
+
+# Models 
+
+## Linear Regression
+
+```{r, collapse=TRUE, warning=FALSE, message=FALSE}
+lin_reg <- lm(label ~ ., data = accident_prepared)
+```
+
+## Ridge Regression
+```{r, collapse=TRUE, warning=FALSE, message=FALSE}
+library(glmnet)
+y <- label
+X <- as.matrix(select(accident_prepared, -label))
+lambda_seq <- 10^seq(10, -2, length = 100)
+ridge_fit <- cv.glmnet(X, y, alpha = 0, lambda = lambda_seq)
+plot(ridge_fit)
+ridge_coef <- coef(ridge_fit)[-1]
+```
+
+## Lasso Regression
+```{r, collapse=TRUE, warning=FALSE, message=FALSE}
+x <- model.matrix(~ ., data = accident_prepared) 
+y <- label
+
+# Fit a Lasso regression with cross-validation
+lasso_model <- cv.glmnet(x, y, alpha = 1) 
+
+extra_columns <- setdiff(colnames(accident_prepared_test), colnames(accident_prepared))
+
+accident_prepared_test <- accident_prepared_test %>%
+                          select(-one_of(extra_columns))
+```
+
+## Random Forest
+```{r}
+library(randomForest)
+accident_forest <- randomForest(label ~ ., data = accident_prepared, ntree = 10, mtry = 5)
+```
+
+
+# Results
+
+## Mean Squared Error of all Models
+```{r, echo=FALSE}
+#Linear Regression
+y_pred <- predict(lin_reg, newdata = accident_prepared_test)
+residuals <- y_pred - label_test
+squared_errors <- residuals^2
+mse <- mean(squared_errors)
+# Print the MSE
+cat("Linear Regression Mean Squared Error:", mse)
+
+#Ridge Regression
+y_pred <- predict(ridge_fit, newx = X)
+mse <- mean((y - y_pred)^2)
+cat("Ridge Regression Mean Squared Error:", mse)
+
+
+#Lasso Regression
+x_test <- model.matrix(~ ., data = accident_prepared_test) 
+y_pred <- predict(lasso_model, newx = x_test)
+mse <- mean((y_pred - label_test)^2)
+cat("Lasso Regression Mean Squared Error:", mse)
+
+#Random Forest
+pred <- predict(accident_forest, newdata = accident_prepared_test)
+confusion_matrix <- table(pred, label_test)
+mse <- mean((label_test - pred)^2)
+cat("Random Forest Mean Squared Error:", mse)
+```
+All of the models had very similar mean squared errors of around 0.13, but the best two models for predicting the severity of a car accident is the linear regression and random forest. The had slightly lower mean squared errors compared to the ridge and lasso regression models.
+
+## Linear Regression Results
+```{r, collapse=TRUE, warning=FALSE, message=FALSE,echo=FALSE}
+library(stargazer)
+
+stargazer(lin_reg, type = "text", title = "Linear Regression Results", 
+          ci = TRUE, ci.level = 0.90, single.row = TRUE,
+          dep.var.caption = "Severity of Car Accident",
+          omit.stat = "all")
+          
+```
+
+```{r, collapse=TRUE, warning=FALSE, message=FALSE, echo=FALSE}
+library(coefplot)
+library(broom)
+
+
+# Extract coefficients and standard errors
+coef_df <- tidy(lin_reg, conf.int = TRUE)
+
+# Filter out intercept
+coef_df <- coef_df[-1,]
+
+num_coef_df <- coef_df[coef_df$term %in% num_attribs,]
+cat_coef_df <- coef_df[grep(".*\\_.*", coef_df$term), ]
+
+# Create plots
+plot_num <- ggplot(num_coef_df, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Numeric Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+
+plot_num
+
+
+cat_coef_df1 <- cat_coef_df[1:25,]
+cat_coef_df2 <- cat_coef_df[25:50,]
+cat_coef_df3 <- cat_coef_df[50:75,]
+cat_coef_df4 <- cat_coef_df[75:100,]
+cat_coef_df5 <- cat_coef_df[100:125,]
+
+
+
+# Create  separate plots
+plot_cat1 <- ggplot(cat_coef_df1, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Categorical Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+
+plot_cat1
+
+plot_cat2 <- ggplot(cat_coef_df2, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Categorical Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+
+plot_cat2
+
+plot_cat3 <- ggplot(cat_coef_df3, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Categorical Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+plot_cat3
+
+plot_cat4 <- ggplot(cat_coef_df4, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Categorical Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+
+plot_cat4
+
+plot_cat5 <- ggplot(cat_coef_df5, aes(x = estimate, y = reorder(term, estimate))) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(x = "Coefficient Estimate", y = "Variable") +
+  ggtitle("Linear Regression Results for Categorical Variables") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+
+plot_cat5
+
+
+```
+
+## Random Forest Results
+```{r, collapse=TRUE, warning=FALSE, message=FALSE,fig.height=8, fig.width= 10, echo=FALSE}
+varImpPlot(accident_forest, main = "Variable Importance Plot")
+```
+
+
+# Discussion
+## Linear Regression
+When looking at the beta estimates provided by our Linear Regression model, there were 41 variables that returned a p-value of less than 0.01. This indicates that these variables were statistically significant. These include: 
+<br>
+
+Humidity
+<br>
+Crossing
+<br>
+Traffic Signal
+<br>
+Several States
+<br>
+Light Drizzle/Windy
+<br>
+Light Freezing rain/windy
+<br>
+Ice Pellets
+<br>
+Overcast Conditions
+<br>
+Smoky, Windy Conditions
+<br>
+Sunrise/Sunset/Night
+
+### Interpretations of Statistically significant variables:
+
+Humidity had a beta estimate of 0.007, which means that as humidity percentage increases by one percentage point, severity increases by 0.007. 
+<br>
+
+If there is a crosswalk nearby, the severity of an accident decreases by 0.036 percent
+<br>
+
+If there is a traffic signal nearby, the severity of the  accident decreases by 0.014
+<br>
+
+The highest beta estimate magnitude had to do with the state in which an accident occurred. The state with the highest impact on accident severity is Wisconsin. The severity of an accident increases by 1.43 if the accident occurred in Wisconsin. Arizona has a beta estimate of -0.199, the lowest of the states surveyed. This means that if an accident were to occur in Arizona, the severity decreases by 0.199.
+<br>
+
+If there is a light drizzle of rain, mixed with windy conditions, the severity of accidents is expected to increase by 0.659
+<br>
+
+If there is light freezing rain mixed with windy conditions, the severity of an accident is expected to increase by 0.871.
+
+## Random Forest
+Looking at the variance importance plot, we can see that being in a particular state had the most importance in predicting the severity of the accident. Of all the variables 21 out of the top 30 most important variable all involved what state you are in. Some of the other important variables that are not related are temperature, humidity, wind speed, traffic light presence, visibility, and precipitation.
+
+## Potential Policy Recommendations 
+There are a couple of potential reasons why Wisconsin suffers the most severe car accidents. One of these reasons is that Wisconsin is subject to extreme weather (lots of rain and snow) that can cause dangerous road conditions, thus contributing to fatal car accidents. When looking at a study by Mingo & Yankala, it is shown that five of the nine deadliest road segments in the state of Wisconsin are located in Milwaukee, which is Wisconsin’s most densely populated area. The way that these roads are constructed potentially contributes to the number of severe car accidents that occur. Each of these segments intersects with another main road or highway or has an interchange with an interstate. One potential way to combat the prominence of severe car accidents on these segments is to decrease the speed limit on these stretches of roads, especially where they intersect/interchange with other main roads. Wisconsin is also the 10th worst state when it comes to arrests/fatalities for driving under the influence. Wisconsin should look to hand out more severe punishment for DUI charges in order to attempt to prevent this risky behavior.
+<https://www.mysclaw.com/the-deadliest-road-stretches-in-wisconsin/#:~:text=Heavily%20trafficked%20roads%20such%20as,higher%20incident%20rate%20of%20accidents>
+
+<br>
+
+Although New Hampshire does not have areas as densely populated as a metropolitan area such as Milwaukee, there are glaring reasons why accidents tend to be more severe. According to Tenn and Tenn, Attorneys at law, New Hampshire struggles to maintain the conditions of their roads. While other state governments may handle poor road conditions quickly and properly, unfortunately, New Hampshire does not. Many of the roads in New Hampshire are cracked/broken, and feature overgrown plant life. There are poor road designs in New Hampshire and many potholes. One large issue with many New Hampshire roads is that they feature curves that are not marked by road signs. One policy suggestion that we have for New Hampshire to combat its severe car accident problem is to mark winding, curved roads with road signs. New Hampshire’s state and local governments must also make more of an effort to fix roads that are damaged by weather, and car accidents at a much faster pace, rather than leaving these hazardous conditions to cause even more accidents. 
+<https://www.tennandtenn.com/car-accidents/dangerous-road-conditions/>
+
+<br>
+
+While investigating why many of the states with the highest likelihood for an accident to be severe, the overwhelming majority of these states cite speeding, distracted driving (cell phones), weather, drowsiness, and drunk driving as the main reasons for the severity of their accidents. While there is no reasonable way to completely eliminate these severe accidents through policy, state and local governments can make more of an effort to promote the laws that are already in place. For example, state and local governments can issue higher, more severe penalties for driving under the influence, and being caught on your phone while driving. Also, state and local governments can again make more of an effort to keep their roads in the best condition possible by removing debris, filling potholes, and making sure that adequate street signs are in place to point out potentially hazardous road conditions.
+
+
+# Conclusion
+Linear regression and random forest models are the best models to predict the severity of a car accident out of the four models tested. Some of the most highest impact variables are the state the accident occurs in, temperature, humidity, and wind speed. These models yielded some surprising results. I assumed that different weather conditions would play a much larger role in the severity of the accident, specifically snowy/mixed precipitation conditions. In future research, I would like to make sure the data is balanced before we start training the models. In the graph of the frequency of each severity accident, the data had a very lopsided numbers of each severity level. This may have had a large impact on the models.
